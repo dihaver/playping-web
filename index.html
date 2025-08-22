@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="vi">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>PlayPing — Tải cho Android</title>
+    <meta name="description" content="Tải PlayPing cho Android. Luôn là bản mới nhất.">
+
+    <link rel="canonical" href="https://playping.dihaver.tech/">
+    <meta property="og:url" content="https://playping.dihaver.tech/">
+    <meta property="og:title" content="PlayPing — Tải cho Android">
+    <meta property="og:description" content="Nhấn để tải file APK mới nhất.">
+    <meta property="og:image" content="https://playping.dihaver.tech/src/assets/og.png">
+    <meta name="twitter:card" content="summary_large_image">
+
+    <meta name="color-scheme" content="light dark">
+    <meta name="theme-color" content="#0b0b0c" media="(prefers-color-scheme: dark)">
+    <meta name="theme-color" content="#fafafa" media="(prefers-color-scheme: light)">
+    <meta name="referrer" content="strict-origin-when-cross-origin">
+
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self';
+                 img-src 'self' data:;
+                 script-src 'self' 'unsafe-inline';
+                 style-src 'self' 'unsafe-inline';
+                 connect-src 'self';
+                 base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
+
+    <link rel="icon" href="src/assets/playping-favicon.png">
+    <link rel="apple-touch-icon" href="src/assets/playping-logo.png">
+
+    <link rel="preload" href="src/css/style.css" as="style">
+    <link rel="stylesheet" href="src/css/style.css">
+</head>
+
+<body>
+    <main class="container">
+        <header class="hero">
+            <h1 class="app-name">PlayPing</h1>
+            <p class="slogan">Trải nghiệm game theo cách của bạn. Bản chính thức cho Android.</p>
+            <div class="spacer"></div>
+
+            <p class="meta muted" aria-live="polite">
+                Phiên bản <span data-version>—</span> · <span data-size>—</span> ·
+                phát hành <span data-date>—</span>
+            </p>
+
+            <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+                <a id="btn-apk" class="btn btn-primary" href="#" role="button" aria-disabled="true">Đang lấy liên
+                    kết…</a>
+            </div>
+        </header>
+
+        <section class="card">
+            <span class="tag">Có gì mới</span>
+            <pre id="changelog" class="muted changelog">—</pre>
+        </section>
+
+        <section class="card" hidden>
+            <span class="tag">Xác minh</span>
+            <div class="kpi">
+                <div>
+                    <div class="label">SHA-256 (tệp)</div>
+                    <code id="sha256">—</code>
+                </div>
+            </div>
+            <p class="muted small">
+                So khớp SHA-256 với file <code>.sha256</code> hoặc giá trị hiển thị để xác minh tệp.
+            </p>
+        </section>
+
+        <section class="card" id="tech" hidden>
+            <span class="tag">Thông số</span>
+            <ul class="specs">
+                <li>Gói: <code data-package>—</code></li>
+                <li>versionCode: <code data-vcode>—</code></li>
+                <li>minSdk: <code data-minsdk>—</code></li>
+                <li>targetSdk: <code data-targetsdk>—</code></li>
+                <li>ABI: <code data-abi>—</code></li>
+            </ul>
+        </section>
+
+        <footer class="footer">
+            <div class="footer-left">
+                <a href="privacy.html">Chính sách</a>
+                <span class="sep">·</span>
+                <a href="terms.html">Điều khoản</a>
+                <span class="sep">·</span>
+                <a href="mailto:dihaver.studio@gmail.com">Hỗ trợ</a>
+            </div>
+        </footer>
+
+        <noscript>
+            <p class="muted small">Trang này cần JavaScript để tự động lấy bản phát hành mới nhất.</p>
+        </noscript>
+    </main>
+
+    <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "PlayPing",
+    "applicationCategory": "GameApplication",
+    "operatingSystem": "Android",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "downloadUrl": "https://playping.dihaver.tech/manifest.json",
+    "softwareVersion": "",
+    "description": "Tải PlayPing cho Android. Luôn là bản mới nhất.",
+    "screenshot": "https://playping.dihaver.tech/src/assets/og.png",
+    "inLanguage": "vi-VN"
+  }
+  </script>
+
+    <script src="src/js/main.js" defer></script>
+</body>
+
+</html>
