@@ -1,0 +1,113 @@
+name: Publish APK & manifest to website repo
+
+on:
+  release:
+    types: [published, edited, released, prereleased]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag release cần deploy (vd: v1.0.0). Để trống = latest'
+        required: false
+        type: string
+      asset_name:
+        description: 'Tên file APK cần deploy (trống = lấy .apk đầu tiên)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || (github.event.release && !github.event.release.draft)
+    steps:
+      - uses: actions/github-script@v7
+        id: meta
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            let rel;
+
+            if (context.eventName === 'workflow_dispatch') {
+              const tag = core.getInput('tag') || '';
+              if (tag) rel = (await github.rest.repos.getReleaseByTag({ owner, repo, tag })).data;
+              else     rel = (await github.rest.repos.getLatestRelease({ owner, repo })).data;
+            } else if (context.eventName === 'release') {
+              const id = context.payload.release?.id;
+              if (!id) core.setFailed('No release in payload');
+              rel = (await github.rest.repos.getRelease({ owner, repo, release_id: id })).data;
+            }
+
+            if (!rel || rel.draft) core.setFailed('Release is draft or missing');
+
+            const wantName = core.getInput('asset_name')?.trim();
+            let asset;
+            if (wantName) {
+              asset = (rel.assets || []).find(a => a.name === wantName);
+              if (!asset) core.setFailed(`APK named "${wantName}" not found in ${rel.tag_name || rel.name}`);
+            } else {
+              asset = (rel.assets || []).find(a => /\.apk$/i.test(a.name));
+              if (!asset) core.setFailed(`No .apk asset in release ${rel.tag_name || rel.name}`);
+            }
+
+            core.setOutput('asset_url', asset.browser_download_url);
+            core.setOutput('asset_name', asset.name);
+            core.setOutput('size_bytes', String(asset.size));
+            core.setOutput('version', (rel.tag_name || rel.name || '').replace(/^v/i, ''));
+            core.setOutput('notes', rel.body || '');
+            core.setOutput('published_at', rel.published_at || new Date().toISOString());
+            core.setOutput('html_url', rel.html_url);
+
+      - name: Download APK
+        run: |
+          curl -L --fail \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -o app.apk "${{ steps.meta.outputs.asset_url }}"
+
+      - name: Compute sha256
+        id: shasum
+        run: |
+          echo "Hashing file: ${{ steps.meta.outputs.asset_name }} (size=${{ steps.meta.outputs.size_bytes }})"
+          echo "value=$(sha256sum app.apk | cut -d ' ' -f1)" >> $GITHUB_OUTPUT
+
+      - name: Checkout website repo
+        uses: actions/checkout@v4
+        with:
+          repository: dihaver/playping-web  
+          ref: main
+          path: website
+          token: ${{ secrets.SITE_REPO_PAT }}
+
+      - name: Copy files & write manifest.json (same-origin)
+        run: |
+          mkdir -p website/dl
+          cp app.apk "website/dl/${{ steps.meta.outputs.asset_name }}"
+          echo "${{ steps.shasum.outputs.value }}" > "website/dl/${{ steps.meta.outputs.asset_name }}.sha256"
+
+          cat > website/manifest.json <<EOF
+          {
+            "platform": "android",
+            "version": "${{ steps.meta.outputs.version }}",
+            "published_at": "${{ steps.meta.outputs.published_at }}",
+            "release_page": "${{ steps.meta.outputs.html_url }}",
+            "apk": {
+              "url": "https://playping.dihaver.tech/dl/${{ steps.meta.outputs.asset_name }}",
+              "name": "${{ steps.meta.outputs.asset_name }}",
+              "size_bytes": ${{ steps.meta.outputs.size_bytes }},
+              "sha256": "${{ steps.shasum.outputs.value }}"
+            },
+            "notes": ${{ toJson(steps.meta.outputs.notes) }}
+          }
+          EOF
+
+          touch website/.nojekyll
+
+      - name: Commit & push to website repo
+        run: |
+          cd website
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Publish ${GITHUB_SHA::7}: ${{ steps.meta.outputs.asset_name }} (v${{ steps.meta.outputs.version }})" || echo "No changes to commit"
+          git push
