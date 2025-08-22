@@ -1,4 +1,4 @@
-name: Publish APK & manifest to website repo
+name: Build & deploy website on release
 
 on:
   release:
@@ -16,9 +16,15 @@ on:
 
 permissions:
   contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
 
 jobs:
-  publish:
+  build:
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' || (github.event.release && !github.event.release.draft)
     steps:
@@ -71,28 +77,23 @@ jobs:
           echo "Hashing file: ${{ steps.meta.outputs.asset_name }} (size=${{ steps.meta.outputs.size_bytes }})"
           echo "value=$(sha256sum app.apk | cut -d ' ' -f1)" >> $GITHUB_OUTPUT
 
-      - name: Checkout website repo
-        uses: actions/checkout@v4
-        with:
-          repository: dihaver/playping-web  
-          ref: main
-          path: website
-          token: ${{ secrets.SITE_REPO_PAT }}
-
-      - name: Copy files & write manifest.json (same-origin)
+      - name: Build site (root)
         run: |
-          mkdir -p website/dl
-          cp app.apk "website/dl/${{ steps.meta.outputs.asset_name }}"
-          echo "${{ steps.shasum.outputs.value }}" > "website/dl/${{ steps.meta.outputs.asset_name }}.sha256"
+          mkdir -p site/dl
+          cp app.apk "site/dl/${{ steps.meta.outputs.asset_name }}"
+          echo "${{ steps.shasum.outputs.value }}" > "site/dl/${{ steps.meta.outputs.asset_name }}.sha256"
 
-          cat > website/manifest.json <<EOF
+          echo "playping.dihaver.tech" > site/CNAME
+          touch site/.nojekyll
+
+          cat > site/manifest.json <<EOF
           {
             "platform": "android",
             "version": "${{ steps.meta.outputs.version }}",
             "published_at": "${{ steps.meta.outputs.published_at }}",
             "release_page": "${{ steps.meta.outputs.html_url }}",
             "apk": {
-              "url": "https://playping.dihaver.tech/dl/${{ steps.meta.outputs.asset_name }}",
+              "url": "dl/${{ steps.meta.outputs.asset_name }}",
               "name": "${{ steps.meta.outputs.asset_name }}",
               "size_bytes": ${{ steps.meta.outputs.size_bytes }},
               "sha256": "${{ steps.shasum.outputs.value }}"
@@ -101,13 +102,23 @@ jobs:
           }
           EOF
 
-          touch website/.nojekyll
+          echo "== site contents =="
+          find site -maxdepth 2 -type f -printf "%p -> %k KB\n"
+          echo "== manifest.json =="
+          cat site/manifest.json
 
-      - name: Commit & push to website repo
-        run: |
-          cd website
-          git config user.name  "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "Publish ${GITHUB_SHA::7}: ${{ steps.meta.outputs.asset_name }} (v${{ steps.meta.outputs.version }})" || echo "No changes to commit"
-          git push
+      - name: Upload artifact to Pages (becomes site root)
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
