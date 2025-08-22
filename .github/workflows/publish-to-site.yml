@@ -1,6 +1,8 @@
-name: Build & deploy website on release
+name: Build & deploy website
 
 on:
+  push:
+    branches: [main]        
   release:
     types: [published, edited, released, prereleased]
   workflow_dispatch:
@@ -12,6 +14,11 @@ on:
       asset_name:
         description: 'Tên file APK cần deploy (trống = lấy .apk đầu tiên)'
         required: false
+        type: string
+      web_dir:
+        description: 'Thư mục chứa website (vd: . hoặc web/)'
+        required: false
+        default: '.'
         type: string
 
 permissions:
@@ -26,28 +33,44 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || (github.event.release && !github.event.release.draft)
     steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
       - uses: actions/github-script@v7
         id: meta
         with:
           script: |
             const { owner, repo } = context.repo;
-            let rel;
 
-            if (context.eventName === 'workflow_dispatch') {
-              const tag = core.getInput('tag') || '';
-              if (tag) rel = (await github.rest.repos.getReleaseByTag({ owner, repo, tag })).data;
-              else     rel = (await github.rest.repos.getLatestRelease({ owner, repo })).data;
-            } else if (context.eventName === 'release') {
+            async function getLatest() {
+              try {
+                return (await github.rest.repos.getLatestRelease({ owner, repo })).data;
+              } catch (e) {
+                core.setFailed('No release found in this repository (create one first)');
+                return null;
+              }
+            }
+
+            let rel = null;
+
+            if (context.eventName === 'release') {
               const id = context.payload.release?.id;
               if (!id) core.setFailed('No release in payload');
-              rel = (await github.rest.repos.getRelease({ owner, repo, release_id: id })).data;
+              else rel = (await github.rest.repos.getRelease({ owner, repo, release_id: id })).data;
+            } else if (context.eventName === 'workflow_dispatch') {
+              const tag = core.getInput('tag') || '';
+              rel = tag
+                ? (await github.rest.repos.getReleaseByTag({ owner, repo, tag })).data
+                : await getLatest();
+            } else {
+              // push / others → dùng latest
+              rel = await getLatest();
             }
 
             if (!rel || rel.draft) core.setFailed('Release is draft or missing');
 
-            const wantName = core.getInput('asset_name')?.trim();
+            const wantName = (core.getInput('asset_name') || '').trim();
             let asset;
             if (wantName) {
               asset = (rel.assets || []).find(a => a.name === wantName);
@@ -77,9 +100,30 @@ jobs:
           echo "Hashing file: ${{ steps.meta.outputs.asset_name }} (size=${{ steps.meta.outputs.size_bytes }})"
           echo "value=$(sha256sum app.apk | cut -d ' ' -f1)" >> $GITHUB_OUTPUT
 
-      - name: Build site (root)
+      - name: Build site (copy web & add release files)
+        env:
+          WEB_DIR: ${{ inputs.web_dir || '.' }}
         run: |
-          mkdir -p site/dl
+          set -euo pipefail
+          mkdir -p site
+
+          echo "Copy website from: ${WEB_DIR}"
+          rsync -a "${WEB_DIR}/" "site/" \
+            --delete \
+            --exclude ".git" \
+            --exclude ".github" \
+            --exclude "node_modules" \
+            --exclude ".next" \
+            --exclude "dist" \
+            --exclude "build" \
+            --exclude ".DS_Store"
+
+          if [ ! -f "site/index.html" ]; then
+            echo "::error::Không tìm thấy site/index.html sau khi copy. Kiểm tra inputs.web_dir"
+            exit 1
+          fi
+
+          mkdir -p "site/dl"
           cp app.apk "site/dl/${{ steps.meta.outputs.asset_name }}"
           echo "${{ steps.shasum.outputs.value }}" > "site/dl/${{ steps.meta.outputs.asset_name }}.sha256"
 
@@ -102,8 +146,10 @@ jobs:
           }
           EOF
 
-          echo "== site contents =="
-          find site -maxdepth 2 -type f -printf "%p -> %k KB\n"
+          echo "== site root listing =="
+          ls -la site | sed 's/^/  /'
+          echo "== site/dl listing =="
+          ls -la site/dl | sed 's/^/  /'
           echo "== manifest.json =="
           cat site/manifest.json
 
